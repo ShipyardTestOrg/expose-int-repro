@@ -1,0 +1,12 @@
+services:
+  web:
+    build: .
+    labels:
+      shipyard.route: '/'
+    ports:
+      - "8080:8080"
+    # Unquoted -> YAML parses these as integers, not strings.
+    # This is what breaks the Shipyard configure page.
+    expose:
+      - 9090
+      - 9091
