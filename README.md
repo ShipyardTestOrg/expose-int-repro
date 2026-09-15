@@ -12,7 +12,7 @@ and nothing else can be blamed for a failure.
 | Branch | Compose quirk | What breaks | Fixed by |
 |---|---|---|---|
 | `main` | `expose:` entries unquoted (`- 9090`) | Configure page renders blank | shipyard#3949 |
-| `tmpfs-volume` | long-syntax volumes with no `source` | Branch switching 500s | shipyard#3951 |
+| `tmpfs-volume` | long-syntax volumes with no `source` | Shipyard rejects the file as invalid | not yet fixed |
 | `control` | quoted `expose`, volumes with a `source` | nothing — baseline | n/a |
 
 ## Why each one breaks
@@ -45,17 +45,27 @@ volumes:
     target: /tmp
 ```
 
-`source` is optional in the compose long syntax — tmpfs mounts and anonymous
-volumes have a target only. `ComposeService._volumes` indexed `v['source']`
-unconditionally. The git-provider compose endpoint serializes `all_volumes`, and
-its `except ShipyardException` doesn't catch a `KeyError`, so the request 500s
-and branch selection breaks on the add and configure pages.
-
-Verified against the Shipyard parser on master:
+This is valid Docker Compose — `docker compose config` accepts it — but Shipyard
+**rejects the whole file**:
 
 ```
-KeyError('source')
+ShipyardBuildError / BuildFailure.INVALID_COMPOSE_FILE
+Invalid volumes entry in service 'web': '{'type': 'tmpfs', 'target': '/tmp'}' must be a string.
 ```
+
+`validate_compose_format` requires every entry in `volumes:` to be a string
+(`shipyard/models/compose.py`, "must be a string"), so the long syntax never
+parses at all.
+
+**This branch does not reproduce the `KeyError('source')` that shipyard#3951
+fixes.** That crash lives further down in `ComposeService._volumes`, which this
+input never reaches. The KeyError is only reachable for Compose rows stored
+*before* the validation check landed (2025-01-28, shipyard#3378) — i.e. legacy
+data, not anything you can create today.
+
+What this branch is genuinely useful for is the larger bug underneath: Shipyard
+refuses valid Docker Compose. On QA, `/api/git-provider/<uuid>/<org>/<ns>/expose-int-repro/compose?branch=tmpfs-volume`
+returns **404** with the message above.
 
 ### `control` — the same service written the boring way
 
@@ -89,15 +99,10 @@ Same URL. The page renders, and the service shows ports 8080, 9090 and 9091.
 Reload the page and confirm a Sentry envelope request goes out on load, or that
 `window.__SENTRY__` is populated. Previously only 4 of ~48 pages had a client.
 
-**4. Reproduce the branch-switch 500 (before #3951)**
+**4. Long-syntax volumes are rejected (not yet fixed)**
 
-On the configure page, switch the branch from `main` to `tmpfs-volume`. Expect
-the compose request to fail — a 500 from
-`/api/git-provider/.../compose`, with `KeyError: 'source'` in the web logs.
-
-**5. Verify the fix (after #3951)**
-
-Switch to `tmpfs-volume` again. The services load, with the source-less volumes
-omitted from the volume list.
+Switch the branch to `tmpfs-volume`, or request the compose endpoint directly.
+Expect a **404** and `Invalid volumes entry ... must be a string`. This is a
+standing bug, not something the three PRs address — see the branch notes above.
 
 **Baseline at any point** — switch to `control`; it should always work.
