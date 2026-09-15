@@ -5,8 +5,11 @@ services:
       shipyard.route: '/'
     ports:
       - "8080:8080"
-    # Unquoted -> YAML parses these as integers, not strings.
-    # This is what breaks the Shipyard configure page.
-    expose:
-      - 9090
-      - 9091
+    volumes:
+      # `source` is optional in the compose long syntax. A tmpfs mount and an
+      # anonymous volume both have a target only -- which used to raise
+      # KeyError('source') and 500 the git-provider compose endpoint.
+      - type: tmpfs
+        target: /tmp
+      - type: volume
+        target: /var/lib/scratch
