@@ -5,8 +5,15 @@ services:
       shipyard.route: '/'
     ports:
       - "8080:8080"
-    # Unquoted -> YAML parses these as integers, not strings.
-    # This is what breaks the Shipyard configure page.
+    # Quoted -- parses as strings, which is what the frontend expects.
     expose:
-      - 9090
-      - 9091
+      - "9090"
+      - "9091"
+    volumes:
+      # Short syntax, and long syntax *with* a source. Both already worked.
+      - type: volume
+        source: scratch
+        target: /var/lib/scratch
+
+volumes:
+  scratch:
